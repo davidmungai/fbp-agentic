@@ -24,8 +24,8 @@ def sentiment_analysis(text):
 
 TOOLBOX = {
     "clean_text": clean_text,
-    "extract_keywords": extract_keywords,
-    "sentiment_analysis": sentiment_analysis
+    "extract_keywords": extract_keywords
+    # "sentiment_analysis": sentiment_analysis
 }
 
 # ====== Flow System ======
@@ -39,18 +39,62 @@ class FlowNode:
         result = self.function(input_data)
         print(f"[{self.name}] Output: {result}")
         return result
+    
+    def tools_signature(self,input,result):
+        prompt = f"""
+                Each tool does:
+                - clean_text: takes in string and outputs string
+                - extract_keywords: takes in string and outputs a list of strings
+                - sentiment_analysis: takes in a string and  returns a tuple of form(polarity,subjectivity)
+
+                TOOLS DEPENDENCY:
+                 sentiment_analysis depends on extract_keywords which depends on clean_text
+
+                Current Tool: "{input}"
+                change the current {result} to work for the next signature
+
+                RESPOND WITH THIS MANDATORY REQUIRED FORMAT:<SIGNATURE>signature values here</SIGNATURE>
+                """ 
+    
+      
+          # Add user message to conversation history
+        messages.append({"role": "user", "content": prompt})
+
+        # print(f"\nAssistant ({MODEL_NAME}): ", end="", flush=True)
+
+            
+            # Stream the response from Ollama
+        response = ollama.chat(
+                model=MODEL_NAME,
+                messages=messages
+            )
+
+        assistant_response=response['message']['content']
+
+        print("><><><<><><><><",assistant_response)
+        exit(0)
+
+
+            # Add assistant's response to conversation history
+        messages.append({"role": "assistant", "content": assistant_response})
+
+        tools = re.search(r'<TOOLS>(.*?)</TOOLS>', assistant_response).group(1)
+        tool_list = [tool.strip() for tool in tools.split(',')]
+        return tool_list
 
 class Flow:
     def __init__(self):
         self.steps = []
-    
     def add_node(self, node: FlowNode):
         self.steps.append(node)
     
     def execute(self, input_data):
         result = input_data
         for node in self.steps:
+
             result = node.run(result)
+            node.tools_signature(node.name,result)
+
         return result
 
 # ====== GPT Planning Agent ======
@@ -112,11 +156,14 @@ class GPTPlanningAgent:
             else:
                 print(f"⚠️ Unknown tool: {tool_name}")
         return flow
+    
+
+
 
 # ====== Run Example ======
 if __name__ == "__main__":
-    # user_goal = "Check how positive or negative a user's feedback is"
-    user_goal = "Check keywords in  a user's feedback only"
+    user_goal = "Check how positive or negative a user's feedback is"
+    # user_goal = "Check keywords in  a user's feedback only"
     agent = GPTPlanningAgent(toolbox=TOOLBOX)
 
     flow = agent.plan_flow(user_goal)
